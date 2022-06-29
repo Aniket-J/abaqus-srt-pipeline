@@ -24,6 +24,9 @@ import numpy as np
 
 # functions
 
+# Create the ring quarter section based on the input given.
+# Input thickness has to be the full thickness of the ring, routine takes care of calculations.
+# Same goes for inner and outer radius, just give the inner and outer diameter. 
 def SRTring(inner_rad,outer_rad,thickness,part,modelname):
     s = mdb.models[modelname].ConstrainedSketch(name='__profile__', sheetSize=20.0)
     g, v, d, c = s.geometry, s.vertices, s.dimensions, s.constraints
@@ -43,11 +46,14 @@ def SRTring(inner_rad,outer_rad,thickness,part,modelname):
     p = mdb.models[modelname].parts[part]
     del mdb.models[modelname].sketches['__profile__']
 
+# Creates a full separate set of the Ring for outputting
 def Create_full_set(setname,part,modelname):
     p = mdb.models[modelname].parts[part]
     c = p.cells[:]
     p.Set(cells=c, name=setname)
 
+# Creates the pin. This ideally wouldn't need to be changed once set up.
+# Function also turns the rigid body to a shell (removes cells)
 def SRTpin(pin_radius, pin_thickness, pin_name, modelname):
     s = mdb.models[modelname].ConstrainedSketch(name='__profile__', sheetSize=20.0)
     g, v, d, c = s.geometry, s.vertices, s.dimensions, s.constraints
@@ -58,21 +64,12 @@ def SRTpin(pin_radius, pin_thickness, pin_name, modelname):
     p.BaseSolidExtrude(sketch=s, depth=pin_thickness)
     s.unsetPrimaryObject()
     p = mdb.models[modelname].parts[pin_name]
-    session.viewports['Viewport: 1'].setValues(displayedObject=p)
     del mdb.models[modelname].sketches['__profile__']
-    mdb.save()
-    #: The model database has been saved to "C:\Users\acj249\Work Folders\Desktop\Abaqus_explicit\SRT_Abaqus\SRT_trial1python.cae".
-    mdb.save()
-    #: The model database has been saved to "C:\Users\acj249\Work Folders\Desktop\Abaqus_explicit\SRT_Abaqus\SRT_trial1python.cae".
     p = mdb.models[modelname].parts[pin_name]
     c1 = p.cells
     p.RemoveCells(cellList = c1[0:1])
-    #: 
-    #: One shell per selected cell has been created from the cell's faces.
-    #p = mdb.models[modelname].parts[pin_name]
-    #v1, e, d1, n = p.vertices, p.edges, p.datums, p.nodes
-    #p.ReferencePoint(point=p.InterestingPoint(edge=e[0], rule=CENTER))
 
+# Creates the reference point that we need on the pin for force-displacement comparison
 def Create_Reference_Point(x, y, z, modelname, partname, setname):
     a = mdb.models[modelname].parts[partname]
     myRP = a.ReferencePoint(point=(x, y, z))
@@ -82,12 +79,14 @@ def Create_Reference_Point(x, y, z, modelname, partname, setname):
     a.Set(referencePoints=refPoints1, name=setname)
     return myRP,myRP_Position
 
+# Material parameters. Ramberg Osgood for implicit analysis.
 def rambergosgood_oneparam(density,youngs,poissons,yieldstr,yieldoffset,hardexpo,mat_name,partname_ring,modelname):
     p1 = mdb.models[modelname].parts[partname_ring]
     mdb.models[modelname].Material(name=mat_name)
     mdb.models[modelname].materials[mat_name].Density(table=((density, ), ))
     mdb.models[modelname].materials[mat_name].DeformationPlasticity(table=((youngs, poissons, yieldstr, hardexpo, yieldoffset), ))
 
+# Creates the "front" surface of the ring, i.e., the one we "see" in DIC.
 def create_set_face_ring(modelname, partname, setname, x, y, z):
     face = ()
     p = mdb.models[modelname].parts[partname]
@@ -95,21 +94,19 @@ def create_set_face_ring(modelname, partname, setname, x, y, z):
     ringface = f.findAt((x,y,z), )
     face = face + (f[ringface.index:ringface.index+1], )
     p.Set(faces=face, name=setname)
-    mdb.save()
-    #: The set 'setname' has been created (1 face)
     return ringface
 
+# Creates and assigns the associated section to the ring.
 def RingSec_create_and_assign(setname, matname, sectionname,partname,modelname):
     p = mdb.models[modelname].parts[partname]
     mdb.models[modelname].HomogeneousSolidSection(name=sectionname, material=matname, thickness=None)
     p = mdb.models[modelname].parts[partname]
     c = p.cells
-    #cells = c.getSequenceFromMask(mask=('[#1 ]', ), )
-    # selecting all the cells
     regions = p.Set(cells=c, name=setname)
     p = mdb.models[modelname].parts[partname]
     p.SectionAssignment(region=regions, sectionName=sectionname, offset=0.0, offsetType=MIDDLE_SURFACE, offsetField='', thicknessAssignment=FROM_SECTION)
 
+# Creates the full assembly, along with the required movement of parts for standardization.
 def full_assembly(modelname, part_ring, part_pin, dependency, ass_ring, ass_pin, zt_ring, zt_pin, yt_pin):
     a = mdb.models[modelname].rootAssembly
     a.DatumCsysByDefault(CARTESIAN)
@@ -119,22 +116,21 @@ def full_assembly(modelname, part_ring, part_pin, dependency, ass_ring, ass_pin,
     a.Instance(name=ass_pin, part=p, dependent=dependency)
     a = mdb.models[modelname].rootAssembly
     a.translate(instanceList=(ass_ring, ), vector=(0.0, 0.0, zt_ring))
-    print(zt_ring)
-    #: The instance SRT_frompython1 was translated by 0., 0., -500.E-03 with respect to the assembly coordinate system
     a = mdb.models[modelname].rootAssembly
     a.translate(instanceList=(ass_pin, ), vector=(0.0, 0.0, zt_pin))
-    print(zt_pin)
-    #: The instance pin_from_script1 was translated by 0., 0., -1.5 with respect to the assembly coordinate system
     a = mdb.models[modelname].rootAssembly
     a.translate(instanceList=(ass_pin, ), vector=(0.0, yt_pin, 0.0))
 
+# Creates analysis step.
 def analysis_step(modelname, stepname, prevstep, tp, max_inc, initinc, min_inc, nlgeom_param):
     a = mdb.models[modelname].ImplicitDynamicsStep(name=stepname, previous=prevstep, timePeriod=tp, maxNumInc=max_inc, initialInc=initinc, minInc=min_inc, nlgeom=nlgeom_param)
 
+# Defines contact property. Define fric_coeff as 0 if you want frictionless.
 def contact_property(modelname, contactname, fric_coeff):
     a = mdb.models[modelname].ContactProperty(contactname)
     a = mdb.models[modelname].interactionProperties[contactname].TangentialBehavior(formulation=PENALTY, directionality=ISOTROPIC, slipRateDependency=OFF, pressureDependency=OFF, temperatureDependency=OFF, dependencies=0, table=((fric_coeff, ), ), shearStressLimit=None, maximumElasticSlip=FRACTION, fraction=0.005, elasticSlipStiffness=None)
 
+# Creates the surface sets on the ring to allot the XY, YZ, and XZ symmetry faces.
 def Create_Set_Surface(modelname, partname, set_name, x,y,z):
     face = ()
     p = mdb.models[modelname].parts[partname]
@@ -144,6 +140,8 @@ def Create_Set_Surface(modelname, partname, set_name, x,y,z):
     p.Surface(side1Faces=face, name=set_name)
     return createdsurface
 
+# Creates contact between ring and pin.
+# Pin is primary surface, ring is secondary surface since pin is a rigid body. Do not change this.
 def create_contact(modelname, pin, ring, contactname, pinsurf, ringsurf, firststep):
     a = mdb.models[modelname].rootAssembly
     region1=a.instances[pin].surfaces[pinsurf]
@@ -156,6 +154,7 @@ def create_contact(modelname, pin, ring, contactname, pinsurf, ringsurf, firstst
         clearanceRegion=None)
     #: The interaction "fromhuiiii" has been created.
 
+# Creates the symmetric BCs on the ring.
 def BC_symm(modelname, ringname, name_Xsymm, name_Ysymm, name_Zsymm, surface_YZsymm, surface_XZsymm, surface_XYsymm, firststep):
     a = mdb.models[modelname].rootAssembly
     region = a.instances[ringname].sets[surface_YZsymm]
@@ -170,6 +169,7 @@ def BC_symm(modelname, ringname, name_Xsymm, name_Ysymm, name_Zsymm, surface_YZs
     mdb.models[modelname].ZsymmBC(name=name_Zsymm, 
         createStepName=firststep, region=region, localCsys=None)
 
+# Creates the applied velocity load exerted by the pin on the ring.
 def load_pin(modelname, pin, referencepoint, loadname, init_step, anal_step, velocity_up):
     a = mdb.models[modelname].rootAssembly
     region = a.instances[pin].sets[referencepoint]
@@ -181,6 +181,7 @@ def load_pin(modelname, pin, referencepoint, loadname, init_step, anal_step, vel
         stepName=anal_step, v2=velocity_up)
     mdb.save()
 
+# Meshes the pin. Assembly is dependent on mesh so no extra steps are needed after this.
 def pin_mesh(modelname, pin, seedsize):
     p = mdb.models[modelname].parts[pin]
     elemType1 = mesh.ElemType(elemCode=R3D4, elemLibrary=STANDARD)
@@ -191,6 +192,7 @@ def pin_mesh(modelname, pin, seedsize):
     p.seedPart(size=seedsize, deviationFactor=0.1, minSizeFactor=0.1)
     p.generateMesh()
 
+# Meshes the ring. 
 def ring_mesh(modelname, ring, seedsize):
     p = mdb.models[modelname].parts[ring]
     elemType1 = mesh.ElemType(elemCode=C3D20R, elemLibrary=STANDARD, elemDeletion=ON)
@@ -202,6 +204,7 @@ def ring_mesh(modelname, ring, seedsize):
     p.seedPart(size=seedsize, deviationFactor=0.1, minSizeFactor=0.1)
     p.generateMesh()
 
+# Job created. This is the function to modify if you want to run multi-threaded on HPC.
 def job_create(modelname, jobname):
     a = mdb.models[modelname].rootAssembly
     mdb.Job(name=jobname, model=modelname, description='', 
@@ -212,6 +215,7 @@ def job_create(modelname, jobname):
         scratch='', resultsFormat=ODB, multiprocessingMode=DEFAULT, numCpus=2, 
         numDomains=2, numGPUs=1)
 
+# Submit the job. 
 def job_submit(jobname):
     mdb.jobs[jobname].submit()
     mdb.jobs[jobname].waitForCompletion()
@@ -222,7 +226,6 @@ def job_submit(jobname):
 #-----------------------------------
 # Pin and ring dimensions
 #-----------------------------------
-
 inn_rad = 5.0
 out_rad = 6.0
 thick = 1.0
@@ -232,11 +235,9 @@ pin_fromcall = "pin_from_script"
 radius_for_pin = 1.0
 thickness_for_pin = 3.0
 modelname_fromcall = "Model_name_for_python"
-
 #-----------------------------------
 # Material parameters
 #-----------------------------------
-
 density = 7.85e-6
 elastic_modulus = 290000
 poissons_ratio = 0.33
@@ -244,11 +245,9 @@ yield_strength = 245
 yield_offset = 0.16
 hardening_exponent = 6.45
 material_name = "SingleParam_RambergOsgood"
-
 #-----------------------------------
 # Pin and ring face surface set coords
 #-----------------------------------
-
 x_ringfront = out_rad-((out_rad-inn_rad)/2)
 y_ringfront = 0.0
 z_ringfront = thick
@@ -278,11 +277,9 @@ x_pin_outercurved = 0.0
 y_pin_outercurved = radius_for_pin
 z_pin_outercurved = (thickness_for_pin/2)
 facename_pin_outercurved = "pin_curvedsurface"
-
 #-----------------------------------
 # Section and assembly creation
 #-----------------------------------
-
 section_set_name = "Set_Sec"
 section_name = "Section_from_python"
 
@@ -292,7 +289,6 @@ depend = True
 ytrans_pin = (inn_rad-radius_for_pin)
 ztrans_pin = (-(thickness_for_pin/2))
 ztrans_ring = (-(thick/2))
-
 #-----------------------------------
 # Step Created
 #-----------------------------------
@@ -322,7 +318,7 @@ name_XYsymm = "Zsymm_about_XY"
 # Reference point
 #-----------------------------------
 refpos = []
-rp_name = "Reference_poopypoop"
+rp_name = "Reference_pt_fromscript"
 #-----------------------------------
 # Load
 #-----------------------------------
@@ -332,8 +328,6 @@ BC_loadname = "pin_moving_up"
 # Mesh params
 #-----------------------------------
 seed_pin = 0.2
-pinelement1 = 'R3D4'
-pinelement2 = 'R3D3'
 seed_ring = 0.1
 #-----------------------------------
 # Job params
@@ -346,9 +340,7 @@ job_name = 'job_from_script'
 #-----------------------------------
 # Model created
 #-----------------------------------
-
 the_model = mdb.Model(name=modelname_fromcall)
-
 #-----------------------------------
 # Function calls
 #-----------------------------------

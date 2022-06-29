@@ -20,7 +20,10 @@ import connectorBehavior
 import odbAccess
 from operator import add
 import numpy as np
+import os
 
+# Change the working director first of all.
+os.chdir(r"C:\Users\acj249\Work Folders\Desktop\Abaqus_explicit\SRT_Abaqus")
 
 # functions
 
@@ -179,7 +182,33 @@ def load_pin(modelname, pin, referencepoint, loadname, init_step, anal_step, vel
         distributionType=UNIFORM, fieldName='')
     mdb.models[modelname].boundaryConditions[loadname].setValuesInStep(
         stepName=anal_step, v2=velocity_up)
-    mdb.save()
+
+def field_and_history_outputs(modelname, ass_pin, ass_ring, set_ring, set_pin, stepname, timedump):
+    a = mdb.models[modelname].rootAssembly
+    mdb.models[modelname].fieldOutputRequests['F-Output-1'].setValues(
+        variables=('S', 'MISES', 'MISESMAX', 'TRIAX', 'SEQUT', 'E', 'PE', 'PEEQ', 
+        'PEEQT', 'PEMAG', 'LE', 'TE', 'TEEQ', 'TEVOL', 'EEQUT', 'UT', 'VT', 'AT', 
+        'RT', 'CF', 'CSTRESS', 'CDISP', 'MVF'), timeInterval=timedump, region=MODEL, 
+        exteriorOnly=OFF, sectionPoints=DEFAULT, rebar=EXCLUDE)
+    regionDef=mdb.models[modelname].rootAssembly.allInstances[ass_ring].sets[set_ring]
+    mdb.models[modelname].FieldOutputRequest(name='field_ringfront', 
+        createStepName=stepname, variables=('S', 'MISES', 'MISESMAX', 'TRIAX', 
+        'E', 'PEEQ', 'PEEQMAX', 'EE', 'LE', 'UT', 'UR', 'VT', 'VR', 'AT', 'AR', 
+        'RT', 'RM'), timeInterval=timedump, region=regionDef, sectionPoints=DEFAULT, 
+        rebar=EXCLUDE)
+    regionDef=mdb.models[modelname].rootAssembly.allInstances[ass_pin].sets[set_pin]
+    mdb.models[modelname].FieldOutputRequest(name='field_pin', 
+        createStepName=stepname, variables=('UT', 'UR', 'VT', 'VR', 'AT', 'AR', 
+        'RT', 'RM', 'TF'), timeInterval=timedump, region=regionDef, 
+        sectionPoints=DEFAULT, rebar=EXCLUDE)
+    regionDef=mdb.models[modelname].rootAssembly.allInstances[ass_pin].sets[set_pin]
+    mdb.models[modelname].HistoryOutputRequest(name='history_pin', 
+    createStepName='dynamic', variables=('U1', 'U2', 'U3', 'UR1', 'UR2', 'UR3', 
+    'V1', 'V2', 'V3', 'VR1', 'VR2', 'VR3', 'A1', 'A2', 'A3', 'AR1', 'AR2', 
+    'AR3', 'RF1', 'RF2', 'RF3', 'RM1', 'RM2', 'RM3', 'RT'), timeInterval=timedump, 
+    region=regionDef, sectionPoints=DEFAULT, rebar=EXCLUDE)
+    mdb.models[modelname].historyOutputRequests['H-Output-1'].setValues(
+    timeInterval=timedump)
 
 # Meshes the pin. Assembly is dependent on mesh so no extra steps are needed after this.
 def pin_mesh(modelname, pin, seedsize):
@@ -336,7 +365,7 @@ job_name = 'job_from_script'
 #-----------------------------------
 # Output requests
 #-----------------------------------
-
+timeperiod = 0.001
 #-----------------------------------
 # Model created
 #-----------------------------------
@@ -369,8 +398,7 @@ create_contact(modelname_fromcall, assembly_pinname, assembly_ringname, part_con
 BC_symm(modelname_fromcall, assembly_ringname, name_YZsymm, name_XZsymm, name_XYsymm, facename_ring_YZ, facename_ring_XZ, facename_ringback, first_step)
 rp, refpos = Create_Reference_Point(0.0,0.0,thickness_for_pin,modelname_fromcall,pin_fromcall,rp_name)
 load_pin(modelname_fromcall, assembly_pinname, rp_name, BC_loadname, first_step, step_name, pin_velocity)
-print("this is the rp", rp)
-print("this should be the array", refpos)
+field_and_history_outputs(modelname_fromcall, assembly_pinname, assembly_ringname, facename_ringfront, rp_name, step_name, timeperiod)
 pin_mesh(modelname_fromcall, pin_fromcall, seed_pin)
 ring_mesh(modelname_fromcall, part_fromcall, seed_ring)
 job_create(modelname_fromcall, job_name)

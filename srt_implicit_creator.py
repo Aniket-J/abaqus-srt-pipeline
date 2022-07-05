@@ -324,8 +324,8 @@ ztrans_ring = (-(thick/2))
 step_name = "dynamic"
 first_step = "Initial"
 total_time = 100.0 # in seconds
-maximum_increment = 10000 # number of increments allowed
-minimum_increment = 0.0001 # in seconds
+maximum_increment = 1000000 # number of increments allowed
+minimum_increment = 0.001 # in seconds
 initial_increment = 0.01 # in seconds
 nlgeom_paramater = True # do we want model buckling? True for yes
 #-----------------------------------
@@ -402,4 +402,4 @@ field_and_history_outputs(modelname_fromcall, assembly_pinname, assembly_ringnam
 pin_mesh(modelname_fromcall, pin_fromcall, seed_pin)
 ring_mesh(modelname_fromcall, part_fromcall, seed_ring)
 job_create(modelname_fromcall, job_name)
-job_submit(job_name)
+#job_submit(job_name)

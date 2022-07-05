@@ -23,7 +23,8 @@ import numpy as np
 import os
 
 # Change the working director first of all.
-os.chdir(r"C:\Users\acj249\Work Folders\Desktop\Abaqus_explicit\SRT_Abaqus")
+caeloc = 'C:\\Users\\acj249\\Work Folders\\Desktop\\Abaqus_explicit\\SRT_Abaqus'
+os.chdir(caeloc)
 
 # functions
 
@@ -183,6 +184,7 @@ def load_pin(modelname, pin, referencepoint, loadname, init_step, anal_step, vel
     mdb.models[modelname].boundaryConditions[loadname].setValuesInStep(
         stepName=anal_step, v2=velocity_up)
 
+# Define the parameters for field and history output, we usually only need ring surface and pin RP
 def field_and_history_outputs(modelname, ass_pin, ass_ring, set_ring, set_pin, stepname, timedump):
     a = mdb.models[modelname].rootAssembly
     mdb.models[modelname].fieldOutputRequests['F-Output-1'].setValues(
@@ -323,7 +325,7 @@ ztrans_ring = (-(thick/2))
 #-----------------------------------
 step_name = "dynamic"
 first_step = "Initial"
-total_time = 100.0 # in seconds
+total_time = 1.0 # in seconds
 maximum_increment = 1000000 # number of increments allowed
 minimum_increment = 0.001 # in seconds
 initial_increment = 0.01 # in seconds
@@ -357,7 +359,7 @@ BC_loadname = "pin_moving_up"
 # Mesh params
 #-----------------------------------
 seed_pin = 0.2
-seed_ring = 0.1
+seed_ring = 0.2
 #-----------------------------------
 # Job params
 #-----------------------------------
@@ -365,7 +367,7 @@ job_name = 'job_from_script'
 #-----------------------------------
 # Output requests
 #-----------------------------------
-timeperiod = 0.001
+timeperiod = 0.005
 #-----------------------------------
 # Model created
 #-----------------------------------
@@ -403,3 +405,37 @@ pin_mesh(modelname_fromcall, pin_fromcall, seed_pin)
 ring_mesh(modelname_fromcall, part_fromcall, seed_ring)
 job_create(modelname_fromcall, job_name)
 #job_submit(job_name)
+
+#-----------------------------------
+# ODB Params and outputting
+#-----------------------------------
+odb = job_name + '.odb'
+odb = odbAccess.openOdb(odb)
+rp_region = 'Node PIN_FROM_SCRIPT1.697' #Based on the mesh size we gave, no need to change this
+filename = 'rp_output'
+u2 = np.array(odb.steps[step_name].historyRegions[rp_region].historyOutputs['U2'].data)
+r2 = np.array(odb.steps[step_name].historyRegions[rp_region].historyOutputs['RF2'].data)
+rp_output = np.concatenate((u2, r2), axis = 1) #Axis = 1 for column-wise appending
+np.savetxt(caeloc + filename + '.csv', rp_output, delimiter = ',') #CSV is now Time, U2, Time, RF2
+
+'''
+To-do list after this outputting-
+1a) create separate .py script for reading CSV and inverse FEM, needs variable segregation
+1b) figure out which parameters to tune
+1c) figure out how to tune parameters
+1d) test tuning of parameters
+
+2a) create separate batch and shell scripts for calling abaqus in desktop and cluster respectively
+2b) have the batch script call and Abq and above Py script as well
+2c) Try simple script on linux stem cluster first
+2d) piece together linux shell script pipeline
+2e) test windows pipeline
+2f) test linux pipeline
+
+3a) create dummy comparison csv
+3b) compare 3a with 1d
+3c) smooth out actual data
+3d) compare 3a with 3c
+
+4a) compare 2-3 extremities of tests
+4b) regression model compares and outputs a generalized parametric mat model with strain rates'''

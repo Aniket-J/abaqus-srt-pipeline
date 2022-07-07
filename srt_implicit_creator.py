@@ -1,6 +1,4 @@
-from pyexpat import model
-from abaqus import *
-from abaqusConstants import *
+import sys
 import regionToolset
 import __main__
 import section
@@ -18,12 +16,17 @@ import visualization
 import xyPlot
 import connectorBehavior
 import odbAccess
-from operator import add
 import numpy as np
 import os
+from pyexpat import model
+from abaqus import *
+from abaqusConstants import *
+from operator import add
 
 # Change the working director first of all.
-caeloc = 'C:\\Users\\acj249\\Work Folders\\Desktop\\Abaqus_explicit\\SRT_Abaqus'
+#C:\\Users\\acj249\\Documents\\GitHub\\abaqus-srt-pipeline
+#C:\\Users\\acj249\\Work Folders\\Desktop\\Abaqus_explicit\\SRT_Abaqus
+caeloc = 'C:\\Users\\acj249\\Documents\\GitHub\\abaqus-srt-pipeline'
 os.chdir(caeloc)
 
 # functions
@@ -325,7 +328,7 @@ ztrans_ring = (-(thick/2))
 #-----------------------------------
 step_name = "dynamic"
 first_step = "Initial"
-total_time = 1.0 # in seconds
+total_time = 0.5 # in seconds
 maximum_increment = 1000000 # number of increments allowed
 minimum_increment = 0.001 # in seconds
 initial_increment = 0.01 # in seconds
@@ -372,6 +375,8 @@ timeperiod = 0.005
 # Model created
 #-----------------------------------
 the_model = mdb.Model(name=modelname_fromcall)
+mdb.saveAs(r'C:\Users\acj249\Documents\GitHub\abaqus-srt-pipeline\batch_trial.cae')
+openMdb(r'C:\Users\acj249\Documents\GitHub\abaqus-srt-pipeline\batch_trial.cae')
 #-----------------------------------
 # Function calls
 #-----------------------------------
@@ -404,20 +409,21 @@ field_and_history_outputs(modelname_fromcall, assembly_pinname, assembly_ringnam
 pin_mesh(modelname_fromcall, pin_fromcall, seed_pin)
 ring_mesh(modelname_fromcall, part_fromcall, seed_ring)
 job_create(modelname_fromcall, job_name)
-#job_submit(job_name)
-
+job_submit(job_name)
+print("we are here from script")
 #-----------------------------------
 # ODB Params and outputting
 #-----------------------------------
+odbloc = 'C:\\Users\\acj249\\Documents\\GitHub\\abaqus-srt-pipeline\\'
 odb = job_name + '.odb'
 odb = odbAccess.openOdb(odb)
 rp_region = 'Node PIN_FROM_SCRIPT1.697' #Based on the mesh size we gave, no need to change this
-filename = 'rp_output'
+filename = 'rp_output_batch'
 u2 = np.array(odb.steps[step_name].historyRegions[rp_region].historyOutputs['U2'].data)
 r2 = np.array(odb.steps[step_name].historyRegions[rp_region].historyOutputs['RF2'].data)
 rp_output = np.concatenate((u2, r2), axis = 1) #Axis = 1 for column-wise appending
-np.savetxt(caeloc + filename + '.csv', rp_output, delimiter = ',') #CSV is now Time, U2, Time, RF2
-
+np.savetxt(odbloc + filename + '.csv', rp_output, delimiter = ',') #CSV is now Time, U2, Time, RF2
+mdb.save()
 '''
 To-do list after this outputting-
 1a) create separate .py script for reading CSV and inverse FEM, needs variable segregation
